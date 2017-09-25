@@ -338,6 +338,10 @@ class MasherThread(threading.Thread):
 
             if not self.skip_mash:
                 self.sanity_check_repo()
+                if config.get('wait_for_repo_sig'):
+                    self.wait_for_repo_signature()
+                else:
+                    self.log.info('Not waiting for a repo signature')
                 self.stage_repo()
 
                 # Wait for the repo to hit the master mirror
@@ -658,9 +662,22 @@ class MasherThread(threading.Thread):
         self.log.debug('Waiting for mash thread to finish')
         mash_thread.join()
         if mash_thread.success:
+            notifications.publish(
+                topic='repo.mash.complete',
+                msg=dict(path=self.path,
+                         id=self.id,
+                         agent=self.agent),
+                force=True)
+
             self.state['completed_repos'].append(self.path)
             self.save_state()
         else:
+            notifications.publish(
+                topic='repo.mash.failed',
+                msg=dict(path=self.path,
+                         id=self.id,
+                         agent=self.agent),
+                force=True)
             raise Exception
 
     def complete_requests(self):
@@ -720,6 +737,34 @@ class MasherThread(threading.Thread):
                 raise
 
         return True
+
+    def wait_for_repo_signature(self):
+        """Wait for a repo signature to appear if configured as such."""
+        sigpaths = {}
+        for arch in os.listdir(os.path.join(self.path, self.id)):
+            sigpaths.append(os.path.join(self.path, self.id, arch, 'repodata',
+                                         'repomd.xml.asc'))
+        self.log.info('Waiting for signatures in %s' % sigpaths)
+        notifications.publish(
+            topic="repo.signature.wait",
+            msg=dict(repo=self.id, agent=self.agent),
+            force=True,
+        )
+        while True:
+            got_all = True
+            for path in sigpaths:
+                if not os.path.exists(path):
+                    got_all = False
+            if got_all:
+                self.log.info('All signatures were created')
+            else:
+                self.log.info('Waiting')
+                time.sleep(5)
+        notifications.publish(
+            topic="repo.signature.done",
+            msg=dict(repo=self.id, agent=self.agent),
+            force=True,
+        )
 
     def stage_repo(self):
         """Symlink our updates repository into the staging directory"""
