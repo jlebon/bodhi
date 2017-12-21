@@ -1133,6 +1133,22 @@ def sort_severity(value):
     return value_map.get(value, 99)
 
 
+def severity_updateinfo_str(value):
+    """
+    Convert a severity level into one apt for inclusion in the updateinfo XML.
+    These values are compatible with RHEL repodata to make it easier to write
+    portable clients.
+    """
+    severity_map = {
+        'unspecified': "None",
+        'low': "Low",
+        'medium': "Moderate",
+        'high': "Important",
+        'urgent': "Critical",
+    }
+    return severity_map.get(value, "None")
+
+
 def get_critpath_components_from_pdc(branch, component_type='rpm'):
     """
     Search PDC for critical path packages based on the specified branch.
